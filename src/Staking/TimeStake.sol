@@ -7,98 +7,104 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 pragma solidity 0.8.26;
 
 contract TimeStake is Ownable {
-  using SafeERC20 for IERC20;
+    using SafeERC20 for IERC20;
 
-  event Staked(address user, uint256 amount, uint256 timestamp);
-  event Unstaked(address user, uint256 amount, uint256 timestamp);
-  event Withdrawed(address user, uint256 amount, uint256 timestamp);
-  event RewardDeposited(uint256 amount, uint256 timestamp);
+    event Staked(address user, uint256 amount, uint256 timestamp);
+    event Unstaked(address user, uint256 amount, uint256 timestamp);
+    event Withdrawed(address user, uint256 amount, uint256 timestamp);
+    event RewardDeposited(uint256 amount, uint256 timestamp);
 
-  IERC20 public immutable stakeToken;
-  IERC20 public immutable rewardToken;
+    IERC20 public immutable stakeToken;
+    IERC20 public immutable rewardToken;
 
-  uint256 totalStakedAmount;
-  uint256 accumulatedRewardPerToken;
-  uint256 rewardPerSecond;
-  uint256 lastUpdatedTime;
+    uint256 totalStakedAmount;
+    uint256 accumulatedRewardPerToken;
+    uint256 rewardPerSecond;
+    uint256 lastUpdatedTime;
 
-  mapping(address user => uint256 stakedAmount) stakedAmountOfUsers;
-  mapping(address user => uint256 rewardDebtPerToken) rewardDebtPerTokenOfUsers;
-  mapping(address user => uint256 rewardAmount) rewardAmountOfUsers;
+    mapping(address user => uint256 stakedAmount) stakedAmountOfUsers;
+    mapping(address user => uint256 rewardDebtPerToken) rewardDebtPerTokenOfUsers;
+    mapping(address user => uint256 rewardAmount) rewardAmountOfUsers;
 
-  constructor(address stakeToken_, address rewardToken_, uint256 rewardRate_) Ownable(msg.sender) {
-    stakeToken = IERC20(stakeToken_);
-    rewardToken = IERC20(rewardToken_);
-    rewardPerSecond = rewardRate_;
-    lastUpdatedTime = block.timestamp;
-  }
-
-  function stake(uint256 amount) external {
-    address user = msg.sender;
-
-    _updateAccumulatedReward();
-    _calculateReward(user);
-
-    totalStakedAmount += amount;
-    unchecked {
-      stakedAmountOfUsers[user] += amount;
+    constructor(
+        address stakeToken_,
+        address rewardToken_,
+        uint256 rewardRate_
+    ) Ownable(msg.sender) {
+        stakeToken = IERC20(stakeToken_);
+        rewardToken = IERC20(rewardToken_);
+        rewardPerSecond = rewardRate_;
+        lastUpdatedTime = block.timestamp;
     }
 
-    stakeToken.safeTransferFrom(user, address(this), amount);
+    function stake(uint256 amount) external {
+        address user = msg.sender;
 
-    emit Staked(user, amount, block.timestamp);
-  }
+        _updateAccumulatedReward();
+        _calculateReward(user);
 
-  function unstake(uint256 amount) external {
-    address user = msg.sender;
-    require(amount <= stakedAmountOfUsers[user], "");
+        totalStakedAmount += amount;
+        unchecked {
+            stakedAmountOfUsers[user] += amount;
+        }
 
-    _updateAccumulatedReward();
-    _calculateReward(user);
+        stakeToken.safeTransferFrom(user, address(this), amount);
 
-    unchecked {
-      totalStakedAmount -= amount;
-      stakedAmountOfUsers[user] -= amount;
+        emit Staked(user, amount, block.timestamp);
     }
 
-    stakeToken.safeTransfer(user, amount);
+    function unstake(uint256 amount) external {
+        address user = msg.sender;
+        require(amount <= stakedAmountOfUsers[user], "");
 
-    emit Unstaked(user, amount, block.timestamp);
-  }
+        _updateAccumulatedReward();
+        _calculateReward(user);
 
-  function withdrawReward() external {
-    address user = msg.sender;
+        unchecked {
+            totalStakedAmount -= amount;
+            stakedAmountOfUsers[user] -= amount;
+        }
 
-    _updateAccumulatedReward();
-    _calculateReward(user);
+        stakeToken.safeTransfer(user, amount);
 
-    uint256 reward = rewardAmountOfUsers[user];
-    rewardAmountOfUsers[user] = 0;
+        emit Unstaked(user, amount, block.timestamp);
+    }
 
-    rewardToken.safeTransfer(user, reward);
+    function withdrawReward() external {
+        address user = msg.sender;
 
-    emit Withdrawed(user, reward, block.timestamp);
-  }
+        _updateAccumulatedReward();
+        _calculateReward(user);
 
-  function depositReward(uint256 amount) external onlyOwner {
-    _updateAccumulatedReward();
+        uint256 reward = rewardAmountOfUsers[user];
+        rewardAmountOfUsers[user] = 0;
 
-    rewardToken.safeTransferFrom(msg.sender, address(this), amount);
+        rewardToken.safeTransfer(user, reward);
 
-    emit RewardDeposited(amount, block.timestamp);
-  }
+        emit Withdrawed(user, reward, block.timestamp);
+    }
 
-  function _updateAccumulatedReward() external {
-    if (totalStakedAmount == 0) return; 
-    uint256 timeElapsed = block.timestamp - lastUpdatedTime;
-    uint256 totalReward = timeElapsed * rewardPerSecond;
-    accumulatedRewardPerToken += (totalReward * 1e18) / totalStakedAmount;
-    lastUpdatedTime = block.timestamp; 
-  }
+    function depositReward(uint256 amount) external onlyOwner {
+        _updateAccumulatedReward();
 
-  function _calculateReward(address user) internal {
-    uint256 reward = stakedAmountOfUsers[user] * (accumulatedRewardPerToken - rewardDebtPerTokenOfUsers[user]) / 1e18;
-    rewardAmountOfUsers[user] += reward;
-    rewardDebtPerTokenOfUsers[user] = accumulatedRewardPerToken;
-  }
+        rewardToken.safeTransferFrom(msg.sender, address(this), amount);
+
+        emit RewardDeposited(amount, block.timestamp);
+    }
+
+    function _updateAccumulatedReward() external {
+        if (totalStakedAmount == 0) return;
+        uint256 timeElapsed = block.timestamp - lastUpdatedTime;
+        uint256 totalReward = timeElapsed * rewardPerSecond;
+        accumulatedRewardPerToken += (totalReward * 1e18) / totalStakedAmount;
+        lastUpdatedTime = block.timestamp;
+    }
+
+    function _calculateReward(address user) internal {
+        uint256 reward = (stakedAmountOfUsers[user] *
+            (accumulatedRewardPerToken - rewardDebtPerTokenOfUsers[user])) /
+            1e18;
+        rewardAmountOfUsers[user] += reward;
+        rewardDebtPerTokenOfUsers[user] = accumulatedRewardPerToken;
+    }
 }
